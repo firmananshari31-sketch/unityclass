@@ -295,6 +295,9 @@
   .chip[aria-pressed="true"] { border-color: var(--green); background: var(--green-soft); font-weight: 600; }
   .swatch { width: 30px; height: 30px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.2); cursor: pointer; padding: 0; }
   .swatch[aria-pressed="true"] { outline: 3px solid #3b3024; outline-offset: 2px; }
+  .cm-photo-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .cm-photo-row .btn { margin-top: 0; }
+  .cm-thumb { width: 44px; height: 56px; object-fit: cover; border-radius: 6px; border: 2px solid var(--gold); }
   .cm-preview { margin: 18px auto 4px; max-width: 340px; }
   .cm-preview canvas { width: 100%; height: auto; display: block; border-radius: 12px; box-shadow: 0 8px 22px rgba(0,0,0,0.18); }
   .cm-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 14px; }
@@ -486,6 +489,14 @@
 
       <label class="cm-label" for="cmMsg">Pesan untuk Keluarga Besar Yayasan Qardhan Hasana</label>
       <textarea id="cmMsg" class="cm-input" rows="4" maxlength="240"></textarea>
+
+      <div class="cm-label">Foto kamu (opsional)</div>
+      <div class="cm-photo-row">
+        <input id="cmPhoto" type="file" accept="image/*" hidden>
+        <button class="btn secondary" id="cmPhotoBtn" type="button">📷 Tambah Foto</button>
+        <button class="chip" id="cmPhotoDel" type="button" hidden>✕ Hapus foto</button>
+        <img id="cmPhotoThumb" class="cm-thumb" alt="Pratinjau foto" hidden>
+      </div>
 
       <div class="cm-label">Tema</div>
       <div class="chips" id="themeChips"></div>
@@ -701,6 +712,8 @@
     msg: 'Terima kasih atas ilmu dan kasih sayang yang selalu diberikan. Semoga Allah membalas kebaikan dan keikhlasan beliau dengan sebaik-baik balasan. Kami sayang sekali pada guru-guru kami! 💚'
   };
 
+  let photoCv = null;
+
   function chip(label, pressed, onClick) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -792,6 +805,7 @@
     ctx.textBaseline = 'middle';
     SPOTS.forEach((p, i) => {
       if (!ornList.length) return;
+      if (photoCv && (i === 2 || i === 3)) return; // beri ruang untuk teks dan foto
       const o = ornList[i % ornList.length];
       ctx.globalAlpha = 0.9;
       ctx.font = (80 + (i % 3) * 14) + 'px ' + EMOJI_FONT;
@@ -807,10 +821,48 @@
     ctx.fillText('untuk guru-guru tercinta', W / 2, 345);
 
     ctx.fillStyle = ink;
-    ctx.font = '52px "' + st.font + '"';
-    const lines = wrap(ctx, st.msg.trim() || ' ', 820).slice(0, 6);
-    let y = 490;
-    lines.forEach(l => { ctx.fillText(l, W / 2, y); y += 74; });
+    const msgText = st.msg.trim() || ' ';
+    let lines, y;
+    if (photoCv) {
+      // Foto di kanan, teks di kiri (ukuran huruf menyesuaikan agar muat)
+      const maxW = 540, cx = 105 + maxW / 2;
+      let fs = 46, lh;
+      for (;;) {
+        ctx.font = fs + 'px "' + st.font + '"';
+        lines = wrap(ctx, msgText, maxW);
+        lh = Math.round(fs * 1.35);
+        if ((lines.length * lh <= 470 && lines.length <= 9) || fs <= 30) break;
+        fs -= 2;
+      }
+      lines = lines.slice(0, 9);
+      y = 470;
+      lines.forEach(l => { ctx.fillText(l, cx, y); y += lh; });
+
+      const PW = 290, PH = 360, pad = 12, fx = 666, fy = 430;
+      ctx.save();
+      ctx.translate(fx + (PW + pad * 2) / 2, fy + (PH + pad * 2) / 2);
+      ctx.rotate(0.03);
+      ctx.shadowColor = 'rgba(0,0,0,0.25)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 8;
+      ctx.fillStyle = '#fff';
+      roundRect(ctx, -(PW / 2 + pad), -(PH / 2 + pad), PW + pad * 2, PH + pad * 2, 14);
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+      ctx.strokeStyle = accent; ctx.lineWidth = 5;
+      ctx.stroke();
+      const r = Math.max(PW / photoCv.width, PH / photoCv.height);
+      const sw = PW / r, sh = PH / r;
+      ctx.save();
+      roundRect(ctx, -PW / 2, -PH / 2, PW, PH, 6);
+      ctx.clip();
+      ctx.drawImage(photoCv, (photoCv.width - sw) / 2, (photoCv.height - sh) / 2, sw, sh, -PW / 2, -PH / 2, PW, PH);
+      ctx.restore();
+      ctx.restore();
+    } else {
+      ctx.font = '52px "' + st.font + '"';
+      lines = wrap(ctx, msgText, 820).slice(0, 6);
+      y = 490;
+      lines.forEach(l => { ctx.fillText(l, W / 2, y); y += 74; });
+    }
 
     ctx.fillStyle = accent;
     ctx.font = '58px "' + st.font + '"';
@@ -890,6 +942,36 @@
   $('cmName').addEventListener('input', e => { st.name = e.target.value; draw(); });
   $('cmMsg').value = st.msg;
   $('cmMsg').addEventListener('input', e => { st.msg = e.target.value; draw(); });
+
+  function setPhoto(cv) {
+    photoCv = cv;
+    $('cmPhotoDel').hidden = !cv;
+    const th = $('cmPhotoThumb');
+    th.hidden = !cv;
+    th.src = cv ? cv.toDataURL('image/jpeg', 0.7) : '';
+    $('cmPhotoBtn').textContent = cv ? '📷 Ganti Foto' : '📷 Tambah Foto';
+    draw();
+  }
+  $('cmPhotoBtn').addEventListener('click', () => $('cmPhoto').click());
+  $('cmPhotoDel').addEventListener('click', () => { $('cmPhoto').value = ''; setPhoto(null); });
+  $('cmPhoto').addEventListener('change', e => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const url = URL.createObjectURL(f);
+    const img = new Image();
+    img.onload = () => {
+      // perkecil agar ringan (maks 900 px sisi terpanjang)
+      const k = Math.min(1, 900 / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(img.naturalWidth * k));
+      c.height = Math.max(1, Math.round(img.naturalHeight * k));
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      setPhoto(c);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); say('Foto tidak bisa dibuka, coba foto lain ya.'); };
+    img.src = url;
+  });
 
   buildChips();
   draw();
